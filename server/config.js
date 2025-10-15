@@ -15,11 +15,16 @@ export function validateConfig() {
       apiKey: process.env.OPENAI_API_KEY
     },
     server: {
-      port: process.env.PORT || 3001,
-      host: process.env.HOST || 'localhost'
-    }
+      port: parseInt(process.env.PORT) || 3001,
+      host: process.env.HOST || '0.0.0.0'
+    },
+    environment: process.env.NODE_ENV || 'development'
   };
 
+  // Log environment info for debugging
+  console.log(`🔧 Environment: ${config.environment}`);
+  console.log(`🌐 Server will bind to: ${config.server.host}:${config.server.port}`);
+  
   // Validate required environment variables
   if (!config.deepgram.apiKey) {
     throw new Error('DEEPGRAM_API_KEY environment variable is required');

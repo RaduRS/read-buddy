@@ -208,6 +208,7 @@ server.listen(PORT, HOST, () => {
   console.log(`🚀 Read Buddy Voice Agent Server running on http://${HOST}:${PORT}`);
   console.log(`📡 WebSocket server ready for connections`);
   console.log(`🎤 Deepgram integration: ${config.deepgram.apiKey ? 'Ready' : 'Not configured'}`);
+  console.log(`🌐 Server bound to host: ${HOST} (${HOST === '0.0.0.0' ? 'accessible from internet' : 'localhost only'})`);
 });
 
 // Graceful shutdown

@@ -25,6 +25,16 @@ export default function Home() {
         throw new Error('getUserMedia is not supported in this browser')
       }
 
+      // For PWA on Android, show explicit permission message
+      const isAndroid = /Android/i.test(navigator.userAgent)
+      const isPWA = window.matchMedia('(display-mode: standalone)').matches
+      
+      if (isAndroid && isPWA) {
+        setMessages(prev => [...prev, '📱 PWA on Android detected'])
+        setMessages(prev => [...prev, '🎤 Please allow microphone access in the next prompt'])
+        setMessages(prev => [...prev, 'If no prompt appears, check your browser settings'])
+      }
+
       // Request microphone access first with simple constraints for PWA compatibility
       setMessages(prev => [...prev, 'Requesting microphone access...'])
       
@@ -32,17 +42,31 @@ export default function Home() {
         audio: true
       })
       audioStreamRef.current = stream
-      setMessages(prev => [...prev, 'Microphone access granted!'])
+      setMessages(prev => [...prev, '✅ Microphone access granted!'])
 
       // Small delay to ensure stream is properly initialized
       await new Promise(resolve => setTimeout(resolve, 100))
 
       // Connect to the voice agent WebSocket server
       const serverUrl = process.env.NEXT_PUBLIC_VOICE_SERVER_URL || 'wss://read-buddy.onrender.com'
+      setMessages(prev => [...prev, `🔗 Connecting to: ${serverUrl}`])
+      setMessages(prev => [...prev, `🌐 User Agent: ${navigator.userAgent.substring(0, 50)}...`])
+      setMessages(prev => [...prev, `📱 Is PWA: ${window.matchMedia('(display-mode: standalone)').matches}`])
+      setMessages(prev => [...prev, `🕐 Connection attempt at: ${new Date().toLocaleTimeString()}`])
+      
       const ws = new WebSocket(serverUrl)
       wsRef.current = ws
 
+      // Set a connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          setMessages(prev => [...prev, '⏰ Connection timeout - Server may be down'])
+          ws.close()
+        }
+      }, 10000) // 10 second timeout
+
       ws.onopen = () => {
+        clearTimeout(connectionTimeout)
         console.log('Connected to voice agent server')
         setMessages(prev => [...prev, 'Connected to voice server!'])
         
@@ -95,12 +119,26 @@ export default function Home() {
         }
       }
 
-      ws.onclose = () => {
-        console.log('Disconnected from voice agent')
+      ws.onclose = (event) => {
+        console.log('Disconnected from voice agent', event)
         setIsConnected(false)
         setIsListening(false)
         setConnectionStatus('disconnected')
-        setMessages(prev => [...prev, 'Disconnected from voice agent'])
+        
+        if (event.code === 1006) {
+          setMessages(prev => [...prev, '❌ Connection failed - Server may be unreachable'])
+          setMessages(prev => [...prev, '💡 This might be a temporary 502 error. Try the "Test Connection" button.'])
+        } else if (event.code === 1000) {
+          setMessages(prev => [...prev, '✅ Disconnected normally'])
+        } else if (event.code === 1002) {
+          setMessages(prev => [...prev, '❌ Protocol error - Check server status'])
+        } else if (event.code === 1011) {
+          setMessages(prev => [...prev, '❌ Server error (502) - Service temporarily unavailable'])
+          setMessages(prev => [...prev, '🔄 Wait a moment and try again'])
+        } else {
+          setMessages(prev => [...prev, `❌ Disconnected (code: ${event.code}, reason: ${event.reason || 'Unknown'})`])
+        }
+        
         stopAudioStreaming()
       }
 
@@ -108,7 +146,8 @@ export default function Home() {
         console.error('WebSocket error:', error)
         setIsConnecting(false)
         setConnectionStatus('error')
-        setMessages(prev => [...prev, 'Error connecting to voice agent. Make sure the server is running.'])
+        setMessages(prev => [...prev, '❌ WebSocket connection error - Check network and server status'])
+        setMessages(prev => [...prev, '💡 Try: 1) Check internet connection 2) Verify server is running on port 10000'])
         stopAudioStreaming()
       }
 
@@ -222,8 +261,50 @@ export default function Home() {
       wsRef.current.close()
       wsRef.current = null
     }
+    stopAudioStreaming()
     setIsConnected(false)
+    setIsListening(false)
     setConnectionStatus('disconnected')
+    sessionIdRef.current = null
+  }
+
+  const testWebSocketConnection = () => {
+    setMessages(prev => [...prev, '🧪 Testing WebSocket connection (no microphone)...'])
+    
+    const serverUrl = process.env.NEXT_PUBLIC_VOICE_SERVER_URL || 'wss://read-buddy.onrender.com'
+    setMessages(prev => [...prev, `🔗 Testing connection to: ${serverUrl}`])
+    setMessages(prev => [...prev, `🕐 Test started at: ${new Date().toLocaleTimeString()}`])
+    
+    const testWs = new WebSocket(serverUrl)
+    
+    const testTimeout = setTimeout(() => {
+      if (testWs.readyState === WebSocket.CONNECTING) {
+        setMessages(prev => [...prev, '❌ Test connection timeout (5s)'])
+        setMessages(prev => [...prev, '💡 Server might be experiencing 502 errors'])
+        testWs.close()
+      }
+    }, 5000)
+    
+    testWs.onopen = () => {
+      clearTimeout(testTimeout)
+      setMessages(prev => [...prev, '✅ WebSocket connection test successful!'])
+      setMessages(prev => [...prev, '🎉 Server is responding - try "Start Voice Chat" now'])
+      testWs.close()
+    }
+    
+    testWs.onclose = (event) => {
+      if (event.code === 1006) {
+        setMessages(prev => [...prev, `🔌 Test failed (code: ${event.code}) - Server unreachable`])
+        setMessages(prev => [...prev, '💡 This indicates a 502 Bad Gateway error'])
+      } else {
+        setMessages(prev => [...prev, `🔌 Test connection closed (code: ${event.code})`])
+      }
+    }
+    
+    testWs.onerror = (error) => {
+      setMessages(prev => [...prev, '❌ WebSocket test failed - Server unreachable'])
+      setMessages(prev => [...prev, '🔍 Check: https://read-buddy.onrender.com for server status'])
+    }
   }
 
   useEffect(() => {
@@ -259,15 +340,23 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex gap-4 justify-center">
+          <div className="flex gap-4 justify-center flex-wrap">
             {!isConnected ? (
-              <button
-                onClick={connectToVoiceAgent}
-                disabled={isConnecting}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-              >
-                {isConnecting ? 'Connecting...' : 'Start Voice Chat'}
-              </button>
+              <>
+                <button
+                  onClick={connectToVoiceAgent}
+                  disabled={isConnecting}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                >
+                  {isConnecting ? 'Connecting...' : 'Start Voice Chat'}
+                </button>
+                <button
+                  onClick={testWebSocketConnection}
+                  className="px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium text-sm"
+                >
+                  Test Connection
+                </button>
+              </>
             ) : (
               <button
                 onClick={disconnectFromVoiceAgent}

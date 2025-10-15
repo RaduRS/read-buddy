@@ -112,7 +112,37 @@ wss.on('connection', (ws, req) => {
   
   ws.on('message', async (message) => {
     try {
-      const data = JSON.parse(message.toString());
+      const messageStr = message.toString();
+      
+      // Check for empty messages
+      if (!messageStr || messageStr.trim() === '') {
+        console.log(`[${getShortTimestamp()}] 📨 Frontend: Empty message received, skipping`);
+        return;
+      }
+      
+      // Parse JSON with error handling
+      let data;
+      try {
+        data = JSON.parse(messageStr);
+      } catch (jsonError) {
+        console.error(`[${getShortTimestamp()}] ❌ Frontend: Invalid JSON received:`, jsonError.message);
+        ws.send(JSON.stringify({
+          type: 'error',
+          message: 'Invalid JSON format'
+        }));
+        return;
+      }
+      
+      // Validate message structure
+      if (!data.type) {
+        console.error(`[${getShortTimestamp()}] ❌ Frontend: Message missing type field`);
+        ws.send(JSON.stringify({
+          type: 'error',
+          message: 'Message must have a type field'
+        }));
+        return;
+      }
+      
       console.log(`[${getShortTimestamp()}] 📨 Frontend message:`, data.type);
       
       switch (data.type) {
@@ -134,10 +164,41 @@ wss.on('connection', (ws, req) => {
             // Set up message forwarding from Deepgram to frontend
             deepgramWs.on('message', (deepgramMessage) => {
               if (ws.readyState === ws.OPEN) {
-                ws.send(JSON.stringify({
-                  type: 'deepgram_message',
-                  data: JSON.parse(deepgramMessage.toString())
-                }));
+                try {
+                  const messageStr = deepgramMessage.toString();
+                  
+                  // Skip empty messages
+                  if (!messageStr || messageStr.trim() === '') {
+                    console.log(`[${getShortTimestamp()}] 📨 Deepgram: Empty message received, skipping`);
+                    return;
+                  }
+                  
+                  // Try to parse as JSON
+                  let parsedData;
+                  try {
+                    parsedData = JSON.parse(messageStr);
+                  } catch (jsonError) {
+                    // If it's not JSON, it might be binary audio data
+                    console.log(`[${getShortTimestamp()}] 📨 Deepgram: Non-JSON message received (likely audio data)`);
+                    
+                    // Forward binary data as base64 for audio
+                    ws.send(JSON.stringify({
+                      type: 'deepgram_audio',
+                      data: deepgramMessage.toString('base64')
+                    }));
+                    return;
+                  }
+                  
+                  // Forward JSON messages
+                  console.log(`[${getShortTimestamp()}] 📨 Deepgram JSON:`, parsedData.type || 'unknown');
+                  ws.send(JSON.stringify({
+                    type: 'deepgram_message',
+                    data: parsedData
+                  }));
+                  
+                } catch (error) {
+                  console.error(`[${getShortTimestamp()}] ❌ Error processing Deepgram message:`, error);
+                }
               }
             });
             
@@ -156,25 +217,97 @@ wss.on('connection', (ws, req) => {
           break;
           
         case 'send_audio':
+          // Validate required fields
+          if (!data.sessionId) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'send_audio requires sessionId'
+            }));
+            break;
+          }
+          
+          if (!data.audio) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'send_audio requires audio data'
+            }));
+            break;
+          }
+          
           // Forward audio to appropriate Deepgram connection
           const sessionId = data.sessionId;
           const connection = activeConnections.get(sessionId);
-          if (connection && connection.deepgramWs.readyState === connection.deepgramWs.OPEN) {
-            connection.deepgramWs.send(data.audio);
+          
+          if (!connection) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: `Session ${sessionId} not found`
+            }));
+            break;
+          }
+          
+          if (connection.deepgramWs.readyState === connection.deepgramWs.OPEN) {
+            try {
+              connection.deepgramWs.send(data.audio);
+              console.log(`[${getShortTimestamp()}] 🎵 Audio forwarded to Deepgram for session ${sessionId}`);
+            } catch (audioError) {
+              console.error(`[${getShortTimestamp()}] ❌ Error sending audio to Deepgram:`, audioError);
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Failed to send audio to Deepgram'
+              }));
+            }
+          } else {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'Deepgram connection not ready'
+            }));
           }
           break;
           
         case 'stop_session':
+          // Validate required fields
+          if (!data.sessionId) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'stop_session requires sessionId'
+            }));
+            break;
+          }
+          
           const stopSessionId = data.sessionId;
           const stopConnection = activeConnections.get(stopSessionId);
+          
           if (stopConnection) {
-            closeVoiceAgent(stopConnection.deepgramWs);
-            activeConnections.delete(stopSessionId);
+            try {
+              closeVoiceAgent(stopConnection.deepgramWs);
+              activeConnections.delete(stopSessionId);
+              console.log(`[${getShortTimestamp()}] 🛑 Session ${stopSessionId} stopped successfully`);
+              ws.send(JSON.stringify({
+                type: 'session_stopped',
+                sessionId: stopSessionId
+              }));
+            } catch (stopError) {
+              console.error(`[${getShortTimestamp()}] ❌ Error stopping session:`, stopError);
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Failed to stop session'
+              }));
+            }
+          } else {
             ws.send(JSON.stringify({
-              type: 'session_stopped',
-              sessionId: stopSessionId
+              type: 'error',
+              message: `Session ${stopSessionId} not found`
             }));
           }
+          break;
+          
+        default:
+          console.log(`[${getShortTimestamp()}] ❓ Unknown message type:`, data.type);
+          ws.send(JSON.stringify({
+            type: 'error',
+            message: `Unknown message type: ${data.type}`
+          }));
           break;
       }
     } catch (error) {

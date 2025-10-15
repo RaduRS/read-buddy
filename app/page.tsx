@@ -82,10 +82,17 @@ export default function Home() {
       }
 
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data)
-        console.log('Received message:', data)
-        
-        switch (data.type) {
+        try {
+          const data = JSON.parse(event.data)
+          console.log('Received message:', data)
+          
+          if (!data.type) {
+            console.error('Received message without type field:', data)
+            setMessages(prev => [...prev, '❌ Received invalid message from server'])
+            return
+          }
+          
+          switch (data.type) {
           case 'session_started':
             sessionIdRef.current = data.sessionId
             setIsConnected(true)
@@ -99,6 +106,12 @@ export default function Home() {
             
           case 'deepgram_message':
             handleDeepgramMessage(data.data)
+            break
+            
+          case 'deepgram_audio':
+            // Handle binary audio data from Deepgram
+            console.log('Received Deepgram audio data:', data.data ? 'Yes' : 'No')
+            // TODO: Implement audio playback if needed
             break
             
           case 'session_error':
@@ -116,6 +129,10 @@ export default function Home() {
             
           default:
             setMessages(prev => [...prev, `Unknown message: ${JSON.stringify(data)}`])
+        }
+        } catch (error) {
+          console.error('Error processing WebSocket message:', error)
+          setMessages(prev => [...prev, '❌ Error processing message from server'])
         }
       }
 

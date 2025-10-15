@@ -192,10 +192,14 @@ wss.on('connection', (ws, req) => {
                   
                   // Check if Deepgram is ready to receive audio
                   if (parsedData.type === 'SettingsApplied') {
+                    console.log(`[${getShortTimestamp()}] 🔍 SettingsApplied received for session: ${sessionId}`);
+                    console.log(`[${getShortTimestamp()}] 🔍 Active connections:`, Array.from(activeConnections.keys()));
                     const connection = activeConnections.get(sessionId);
                     if (connection) {
                       connection.deepgramReady = true;
                       console.log(`[${getShortTimestamp()}] ✅ Deepgram ready to receive audio for session ${sessionId}`);
+                    } else {
+                      console.error(`[${getShortTimestamp()}] ❌ Could not find connection for session ${sessionId} to set deepgramReady`);
                     }
                   }
                   
@@ -255,6 +259,9 @@ wss.on('connection', (ws, req) => {
             }));
             break;
           }
+          
+          // Debug logging
+          console.log(`[${getShortTimestamp()}] 🔍 Audio check - Session: ${sessionId}, WS State: ${connection.deepgramWs.readyState}, Ready: ${connection.deepgramReady}`);
           
           if (connection.deepgramWs.readyState === connection.deepgramWs.OPEN && connection.deepgramReady) {
             try {

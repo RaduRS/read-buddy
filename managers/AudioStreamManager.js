@@ -35,6 +35,10 @@ export class AudioStreamManager {
     return this.audioBuffer.length;
   }
   
+  getBuffer() {
+    return this.audioBuffer;
+  }
+  
   extractFrame() {
     if (this.audioBuffer.length >= this.FRAME_SIZE) {
       const frame = this.audioBuffer.subarray(0, this.FRAME_SIZE);
@@ -44,11 +48,20 @@ export class AudioStreamManager {
     return null;
   }
   
-  cleanup() {
+  setStreamTimeout(callback, delay = 2000) {
+    this.clearStreamTimeout();
+    this.audioStreamTimeout = setTimeout(callback, delay);
+  }
+  
+  clearStreamTimeout() {
     if (this.audioStreamTimeout) {
       clearTimeout(this.audioStreamTimeout);
       this.audioStreamTimeout = null;
     }
+  }
+  
+  cleanup() {
+    this.clearStreamTimeout();
     if (this.pacer) {
       clearInterval(this.pacer);
       this.pacer = null;

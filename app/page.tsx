@@ -124,7 +124,7 @@ export default function Home() {
             break
             
           case 'error':
-            setMessages(prev => [...prev, `Error: ${data.error}`])
+            setMessages(prev => [...prev, `Error: ${data.message || data.error || 'Unknown error'}`])
             break
             
           default:

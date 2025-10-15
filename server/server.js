@@ -158,7 +158,8 @@ wss.on('connection', (ws, req) => {
               deepgramWs,
               sessionConfig,
               frontendWs: ws,
-              startTime: new Date()
+              startTime: new Date(),
+              deepgramReady: false  // Track if Deepgram is ready to receive audio
             });
             
             // Set up message forwarding from Deepgram to frontend
@@ -187,6 +188,15 @@ wss.on('connection', (ws, req) => {
                       data: deepgramMessage.toString('base64')
                     }));
                     return;
+                  }
+                  
+                  // Check if Deepgram is ready to receive audio
+                  if (parsedData.type === 'SettingsApplied') {
+                    const connection = activeConnections.get(sessionId);
+                    if (connection) {
+                      connection.deepgramReady = true;
+                      console.log(`[${getShortTimestamp()}] ✅ Deepgram ready to receive audio for session ${sessionId}`);
+                    }
                   }
                   
                   // Forward JSON messages
@@ -246,7 +256,7 @@ wss.on('connection', (ws, req) => {
             break;
           }
           
-          if (connection.deepgramWs.readyState === connection.deepgramWs.OPEN) {
+          if (connection.deepgramWs.readyState === connection.deepgramWs.OPEN && connection.deepgramReady) {
             try {
               connection.deepgramWs.send(data.audio);
               console.log(`[${getShortTimestamp()}] 🎵 Audio forwarded to Deepgram for session ${sessionId}`);
@@ -258,10 +268,12 @@ wss.on('connection', (ws, req) => {
               }));
             }
           } else {
-            ws.send(JSON.stringify({
-              type: 'error',
-              message: 'Deepgram connection not ready'
-            }));
+            const reason = connection.deepgramWs.readyState !== connection.deepgramWs.OPEN 
+              ? 'WebSocket not open' 
+              : 'Deepgram not ready for audio';
+            console.log(`[${getShortTimestamp()}] ⚠️ Cannot send audio: ${reason} (session: ${sessionId})`);
+            // Don't send error to frontend - just log and skip
+            // This prevents spamming the UI with "not ready" errors during initialization
           }
           break;
           

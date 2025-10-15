@@ -180,7 +180,12 @@ wss.on('connection', (ws, req) => {
                     parsedData = JSON.parse(messageStr);
                   } catch (jsonError) {
                     // If it's not JSON, it might be binary audio data
-                    console.log(`[${getShortTimestamp()}] 📨 Deepgram: Non-JSON message received (likely audio data)`);
+                    // If we're receiving audio from Deepgram, it's ready to receive audio
+                    const connection = activeConnections.get(sessionId);
+                    if (connection && !connection.deepgramReady) {
+                      console.log(`[${getShortTimestamp()}] 🎉 Deepgram is sending audio - marking as ready for session ${sessionId}!`);
+                      connection.deepgramReady = true;
+                    }
                     
                     // Forward binary data as base64 for audio
                     ws.send(JSON.stringify({
@@ -190,21 +195,7 @@ wss.on('connection', (ws, req) => {
                     return;
                   }
                   
-                  // Check if Deepgram is ready to receive audio
-                  if (parsedData.type === 'SettingsApplied') {
-                    console.log(`[${getShortTimestamp()}] 🔍 SettingsApplied received for session: ${sessionId}`);
-                    console.log(`[${getShortTimestamp()}] 🔍 Active connections:`, Array.from(activeConnections.keys()));
-                    const connection = activeConnections.get(sessionId);
-                    if (connection) {
-                      connection.deepgramReady = true;
-                      console.log(`[${getShortTimestamp()}] ✅ Deepgram ready to receive audio for session ${sessionId}`);
-                    } else {
-                      console.error(`[${getShortTimestamp()}] ❌ Could not find connection for session ${sessionId} to set deepgramReady`);
-                    }
-                  }
-                  
                   // Forward JSON messages
-                  console.log(`[${getShortTimestamp()}] 📨 Deepgram JSON:`, parsedData.type || 'unknown');
                   ws.send(JSON.stringify({
                     type: 'deepgram_message',
                     data: parsedData
@@ -260,13 +251,9 @@ wss.on('connection', (ws, req) => {
             break;
           }
           
-          // Debug logging
-          console.log(`[${getShortTimestamp()}] 🔍 Audio check - Session: ${sessionId}, WS State: ${connection.deepgramWs.readyState}, Ready: ${connection.deepgramReady}`);
-          
           if (connection.deepgramWs.readyState === connection.deepgramWs.OPEN && connection.deepgramReady) {
             try {
               connection.deepgramWs.send(data.audio);
-              console.log(`[${getShortTimestamp()}] 🎵 Audio forwarded to Deepgram for session ${sessionId}`);
             } catch (audioError) {
               console.error(`[${getShortTimestamp()}] ❌ Error sending audio to Deepgram:`, audioError);
               ws.send(JSON.stringify({
@@ -275,12 +262,10 @@ wss.on('connection', (ws, req) => {
               }));
             }
           } else {
-            const reason = connection.deepgramWs.readyState !== connection.deepgramWs.OPEN 
-              ? 'WebSocket not open' 
-              : 'Deepgram not ready for audio';
-            console.log(`[${getShortTimestamp()}] ⚠️ Cannot send audio: ${reason} (session: ${sessionId})`);
-            // Don't send error to frontend - just log and skip
-            // This prevents spamming the UI with "not ready" errors during initialization
+            // Log only when Deepgram is not ready (to avoid spam during normal operation)
+            if (!connection.deepgramReady) {
+              console.log(`[${getShortTimestamp()}] ⚠️ Cannot send audio: Deepgram not ready for session ${sessionId}`);
+            }
           }
           break;
           

@@ -1,6 +1,6 @@
 ## Project Overview
 
-Build a Progressive Web App (PWA) using Next.js that helps children learn to read through real-time voice interaction with Deepgram AI. The app assesses reading levels (1-5), generates dynamic reading cards, provides real-time feedback, and tracks progress using localStorage. Designed for Chrome on Android tablets with a playful, encouraging interface.[https://nextjs.org/docs/app/guides/progressive-web-apps](https://nextjs.org/docs/app/guides/progressive-web-apps)​
+Read Buddy is a reading companion that helps children learn to read through voice interaction. The app provides an intuitive interface for voice-based reading assistance.
 
 ## Tech Stack Setup
 

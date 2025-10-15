@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Read Buddy - Learning to Read",
-  description: "A Progressive Web App that helps children learn to read through voice interaction",
+  description: "A reading companion that helps children learn to read through voice interaction",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

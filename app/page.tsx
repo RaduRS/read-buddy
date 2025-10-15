@@ -15,7 +15,8 @@ export default function Home() {
     
     try {
       // Connect to the voice agent WebSocket
-      const ws = new WebSocket('ws://localhost:3001')
+      const serverUrl = process.env.NEXT_PUBLIC_VOICE_SERVER_URL || 'wss://read-buddy.onrender.com'
+      const ws = new WebSocket(serverUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
@@ -126,8 +127,8 @@ export default function Home() {
         )}
 
         <div className="mt-8 text-sm text-gray-500">
-          <p>Make sure the voice agent server is running on port 3001</p>
-          <p>Run: <code className="bg-gray-200 px-2 py-1 rounded">npm run server:dev</code></p>
+          <p>Voice agent server deployed on Render</p>
+          <p>For local development: <code className="bg-gray-200 px-2 py-1 rounded">npm run server:dev</code></p>
         </div>
       </div>
     </div>

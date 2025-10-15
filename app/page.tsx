@@ -25,20 +25,17 @@ export default function Home() {
         throw new Error('getUserMedia is not supported in this browser')
       }
 
-      // Request microphone access first
+      // Request microphone access first with simple constraints for PWA compatibility
       setMessages(prev => [...prev, 'Requesting microphone access...'])
-      setMessages(prev => [...prev, 'Please allow microphone access when prompted by your browser.'])
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true
-        } 
+        audio: true
       })
       audioStreamRef.current = stream
       setMessages(prev => [...prev, 'Microphone access granted!'])
+
+      // Small delay to ensure stream is properly initialized
+      await new Promise(resolve => setTimeout(resolve, 100))
 
       // Connect to the voice agent WebSocket server
       const serverUrl = process.env.NEXT_PUBLIC_VOICE_SERVER_URL || 'wss://read-buddy.onrender.com'

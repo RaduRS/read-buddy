@@ -1,0 +1,28 @@
+{
+  "name": "Read Buddy - Learning to Read",
+  "short_name": "ReadBuddy",
+  "description": "A Progressive Web App that helps children learn to read through voice interaction",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3B82F6",
+  "orientation": "landscape-primary",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "categories": ["education", "kids"],
+  "lang": "en",
+  "scope": "/",
+  "prefer_related_applications": false
+}

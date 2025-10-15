@@ -1,103 +1,135 @@
-import Image from "next/image";
+'use client'
+
+import { useState, useRef, useEffect } from 'react'
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState('disconnected')
+  const [messages, setMessages] = useState<string[]>([])
+  const wsRef = useRef<WebSocket | null>(null)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const connectToVoiceAgent = async () => {
+    setIsConnecting(true)
+    setConnectionStatus('connecting')
+    
+    try {
+      // Connect to the voice agent WebSocket
+      const ws = new WebSocket('ws://localhost:3001')
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        console.log('Connected to voice agent')
+        setIsConnected(true)
+        setIsConnecting(false)
+        setConnectionStatus('connected')
+        setMessages(prev => [...prev, 'Connected to Read Buddy voice agent!'])
+      }
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data)
+        console.log('Received message:', data)
+        setMessages(prev => [...prev, `Voice Agent: ${data.message || JSON.stringify(data)}`])
+      }
+
+      ws.onclose = () => {
+        console.log('Disconnected from voice agent')
+        setIsConnected(false)
+        setConnectionStatus('disconnected')
+        setMessages(prev => [...prev, 'Disconnected from voice agent'])
+      }
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error)
+        setIsConnecting(false)
+        setConnectionStatus('error')
+        setMessages(prev => [...prev, 'Error connecting to voice agent. Make sure the server is running.'])
+      }
+
+    } catch (error) {
+      console.error('Failed to connect:', error)
+      setIsConnecting(false)
+      setConnectionStatus('error')
+      setMessages(prev => [...prev, 'Failed to connect to voice agent'])
+    }
+  }
+
+  const disconnectFromVoiceAgent = () => {
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    setIsConnected(false)
+    setConnectionStatus('disconnected')
+  }
+
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+    }
+  }, [])
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col items-center justify-center p-8">
+      <div className="text-center max-w-4xl w-full">
+        <h1 className="text-6xl font-bold text-gray-800 mb-6">
+          Read Buddy
+        </h1>
+        
+        <p className="text-xl text-gray-600 mb-8">
+          Your AI-powered reading companion. Start a voice conversation to practice reading together!
+        </p>
+        
+        <div className="mb-8">
+          <div className={`inline-block px-4 py-2 rounded-full text-sm font-medium mb-4 ${
+            connectionStatus === 'connected' ? 'bg-green-100 text-green-800' :
+            connectionStatus === 'connecting' ? 'bg-yellow-100 text-yellow-800' :
+            connectionStatus === 'error' ? 'bg-red-100 text-red-800' :
+            'bg-gray-100 text-gray-800'
+          }`}>
+            Status: {connectionStatus}
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        
+        <div className="space-x-4 mb-8">
+          {!isConnected ? (
+            <button
+              onClick={connectToVoiceAgent}
+              disabled={isConnecting}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-4 px-8 rounded-lg text-lg transition-colors duration-200"
+            >
+              {isConnecting ? 'Connecting...' : 'Start Voice Chat'}
+            </button>
+          ) : (
+            <button
+              onClick={disconnectFromVoiceAgent}
+              className="bg-red-600 hover:bg-red-700 text-white font-semibold py-4 px-8 rounded-lg text-lg transition-colors duration-200"
+            >
+              Disconnect
+            </button>
+          )}
+        </div>
+
+        {messages.length > 0 && (
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">
+            <h3 className="text-lg font-semibold mb-4">Connection Log</h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {messages.map((message, index) => (
+                <div key={index} className="text-sm text-gray-700 p-2 bg-gray-50 rounded">
+                  {message}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-8 text-sm text-gray-500">
+          <p>Make sure the voice agent server is running on port 3001</p>
+          <p>Run: <code className="bg-gray-200 px-2 py-1 rounded">npm run server:dev</code></p>
+        </div>
+      </div>
     </div>
-  );
+  )
 }

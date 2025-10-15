@@ -13,13 +13,22 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
 
+
+
   const connectToVoiceAgent = async () => {
     setIsConnecting(true)
     setConnectionStatus('connecting')
     
     try {
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('getUserMedia is not supported in this browser')
+      }
+
       // Request microphone access first
       setMessages(prev => [...prev, 'Requesting microphone access...'])
+      setMessages(prev => [...prev, 'Please allow microphone access when prompted by your browser.'])
+      
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           sampleRate: 16000,
@@ -110,8 +119,27 @@ export default function Home() {
       console.error('Failed to connect:', error)
       setIsConnecting(false)
       setConnectionStatus('error')
-      if (error instanceof Error && error.name === 'NotAllowedError') {
-        setMessages(prev => [...prev, 'Microphone access denied. Please allow microphone access and try again.'])
+      
+      if (error instanceof Error) {
+        switch (error.name) {
+          case 'NotAllowedError':
+            setMessages(prev => [...prev, 'Microphone access denied. Please:'])
+            setMessages(prev => [...prev, '1. Click the microphone icon in your browser address bar'])
+            setMessages(prev => [...prev, '2. Select "Allow" for microphone access'])
+            setMessages(prev => [...prev, '3. Refresh the page and try again'])
+            break
+          case 'NotFoundError':
+            setMessages(prev => [...prev, 'No microphone found. Please connect a microphone and try again.'])
+            break
+          case 'NotReadableError':
+            setMessages(prev => [...prev, 'Microphone is being used by another application. Please close other apps using the microphone.'])
+            break
+          case 'OverconstrainedError':
+            setMessages(prev => [...prev, 'Microphone constraints not supported. Please try again.'])
+            break
+          default:
+            setMessages(prev => [...prev, `Error: ${error.message}`])
+        }
       } else {
         setMessages(prev => [...prev, 'Failed to connect to voice agent'])
       }
@@ -189,6 +217,8 @@ export default function Home() {
     }
     setIsListening(false)
   }
+
+
 
   const disconnectFromVoiceAgent = () => {
     if (wsRef.current) {

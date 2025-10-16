@@ -201,6 +201,9 @@ wss.on('connection', (ws, req) => {
                     if (connection) {
                       console.log(`[${getShortTimestamp()}] 🎉 SettingsApplied received - marking Deepgram as ready for session ${sessionId}!`);
                       connection.deepgramReady = true;
+                      console.log(`[${getShortTimestamp()}] 🔍 Debug: deepgramReady flag set to ${connection.deepgramReady}, WebSocket state: ${connection.deepgramWs.readyState}`);
+                    } else {
+                      console.log(`[${getShortTimestamp()}] ❌ SettingsApplied received but no connection found for session ${sessionId}`);
                     }
                   }
                   
@@ -274,10 +277,12 @@ wss.on('connection', (ws, req) => {
               }));
             }
           } else {
-            // Log only when Deepgram is not ready (to avoid spam during normal operation)
-            if (!connection.deepgramReady) {
-              console.log(`[${getShortTimestamp()}] ⚠️ Cannot send audio: Deepgram not ready for session ${sessionId}`);
-            }
+            // Debug: Check which condition is failing
+            const wsState = connection.deepgramWs.readyState;
+            const wsOpen = wsState === connection.deepgramWs.OPEN;
+            const deepgramReady = connection.deepgramReady;
+            
+            console.log(`[${getShortTimestamp()}] ⚠️ Cannot send audio: WebSocket state: ${wsState} (OPEN=${connection.deepgramWs.OPEN}), wsOpen: ${wsOpen}, deepgramReady: ${deepgramReady}, session: ${sessionId}`);
           }
           break;
           

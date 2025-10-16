@@ -41,15 +41,28 @@ export default function Home() {
       // Request microphone access first with simple constraints for PWA compatibility
       setMessages(prev => [...prev, 'Requesting microphone access...'])
       
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 24000,
-          channelCount: 1
-        }
-      })
+      let stream: MediaStream
+      
+      try {
+        // Try with specific constraints first
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 24000,
+            channelCount: 1
+          }
+        })
+        console.log('✅ Got audio stream with specific constraints')
+      } catch (constraintError) {
+        console.warn('⚠️ Specific constraints failed, trying with basic audio:', constraintError)
+        // Fallback to basic audio constraints
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: true
+        })
+        console.log('✅ Got audio stream with basic constraints')
+      }
       audioStreamRef.current = stream
       setMessages(prev => [...prev, '✅ Microphone access granted!'])
 
@@ -312,6 +325,18 @@ export default function Home() {
         constraints: track.getConstraints()
       })))
       
+      // Check track status and constraints
+      const audioTracks = stream.getAudioTracks()
+      if (audioTracks.length > 0) {
+        const track = audioTracks[0]
+        console.log('🎤 Audio track enabled:', track.enabled)
+        console.log('🎤 Audio track ready state:', track.readyState)
+        console.log('🎤 Audio track settings:', track.getSettings())
+        console.log('🎤 Audio track constraints:', track.getConstraints())
+      } else {
+        console.log('❌ No audio tracks found in stream!')
+      }
+      
       const source = audioContext.createMediaStreamSource(stream)
       console.log('🔗 MediaStreamSource created successfully')
       
@@ -344,7 +369,7 @@ export default function Home() {
         }
         
         source.connect(processor)
-        processor.connect(audioContext.destination)
+        // Note: We don't connect processor to destination since we're only processing audio data
         
         // Store references for cleanup
         mediaRecorderRef.current = { 
@@ -357,6 +382,12 @@ export default function Home() {
         } as MediaRecorder
         
         console.log('🎤 Started PCM audio streaming with AudioWorkletNode...')
+        
+        // Enable test audio after 5 seconds if no real audio is detected
+        setTimeout(() => {
+          console.log('🧪 Enabling test audio generation to debug audio pipeline...')
+          processor.port.postMessage({ type: 'enableTestAudio', enabled: true })
+        }, 5000)
         
       } catch (workletError) {
         console.warn('AudioWorklet not available, falling back to ScriptProcessorNode:', workletError)

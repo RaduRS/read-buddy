@@ -316,27 +316,21 @@ export default function Home() {
         
         // Handle processed audio data
         processor.port.onmessage = (event) => {
-          if (ws.readyState === WebSocket.OPEN && sessionIdRef.current) {
-            const { audioData, rms } = event.data
+          if (event.data.type === 'audioData') {
+            console.log('📨 Received audio data from AudioWorklet processor')
             
-            // Check for silence to avoid sending empty audio (reduces AI processing load)
-            const silenceThreshold = 0.01
-            
-            if (rms < silenceThreshold) {
-              console.log('🔇 Skipping silent audio chunk (RMS:', rms.toFixed(4), ')')
-              return // Don't send silent audio
+            if (ws && ws.readyState === WebSocket.OPEN && sessionIdRef.current) {
+              const audioData = new Uint8Array(event.data.data)
+              const base64Audio = btoa(String.fromCharCode(...audioData))
+              
+              console.log('📤 Sending PCM audio data:', audioData.length, 'bytes, base64 length:', base64Audio.length)
+              
+              ws.send(JSON.stringify({
+                type: 'send_audio',
+                sessionId: sessionIdRef.current,
+                audio: base64Audio
+              }))
             }
-            
-            // Convert to base64
-            const base64Audio = btoa(String.fromCharCode(...audioData))
-            
-            console.log('📤 Sending PCM audio data:', audioData.length, 'bytes, RMS:', rms.toFixed(4), 'base64 length:', base64Audio.length)
-            
-            ws.send(JSON.stringify({
-              type: 'send_audio',
-              sessionId: sessionIdRef.current,
-              audio: base64Audio
-            }))
           }
         }
         

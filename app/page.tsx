@@ -298,33 +298,59 @@ export default function Home() {
 
   const startAudioStreaming = (stream: MediaStream, ws: WebSocket) => {
     try {
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
+      // Create AudioContext for raw PCM capture
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      const audioContext = new AudioContextClass({
+        sampleRate: 24000
       })
-      mediaRecorderRef.current = mediaRecorder
       
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && ws.readyState === WebSocket.OPEN && sessionIdRef.current) {
-          console.log('📤 Sending audio data:', event.data.size, 'bytes, type:', event.data.type)
-          // Convert blob to base64 and send to server
-          const reader = new FileReader()
-          reader.onload = () => {
-            const base64Audio = (reader.result as string).split(',')[1]
-            console.log('📤 Audio base64 length:', base64Audio.length)
-            ws.send(JSON.stringify({
-              type: 'send_audio',
-              sessionId: sessionIdRef.current,
-              audio: base64Audio
-            }))
+      const source = audioContext.createMediaStreamSource(stream)
+      
+      // Create ScriptProcessorNode for raw audio processing
+      const processor = audioContext.createScriptProcessor(4096, 1, 1)
+      
+      processor.onaudioprocess = (event) => {
+        if (ws.readyState === WebSocket.OPEN && sessionIdRef.current) {
+          const inputBuffer = event.inputBuffer
+          const inputData = inputBuffer.getChannelData(0) // Get mono channel
+          
+          // Convert Float32 to Int16 PCM
+          const pcmData = new Int16Array(inputData.length)
+          for (let i = 0; i < inputData.length; i++) {
+            // Clamp and convert to 16-bit signed integer
+            const sample = Math.max(-1, Math.min(1, inputData[i]))
+            pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF
           }
-          reader.readAsDataURL(event.data)
-        } else {
-          console.log('❌ Cannot send audio - size:', event.data.size, 'ws state:', ws.readyState, 'sessionId:', sessionIdRef.current)
+          
+          // Convert to base64
+          const uint8Array = new Uint8Array(pcmData.buffer)
+          const base64Audio = btoa(String.fromCharCode(...uint8Array))
+          
+          console.log('📤 Sending PCM audio data:', pcmData.length, 'samples, base64 length:', base64Audio.length)
+          
+          ws.send(JSON.stringify({
+            type: 'send_audio',
+            sessionId: sessionIdRef.current,
+            audio: base64Audio
+          }))
         }
       }
       
-      mediaRecorder.start(100) // Send audio chunks every 100ms
-      setMessages(prev => [...prev, 'Started audio streaming...'])
+      // Connect the audio processing chain
+      source.connect(processor)
+      processor.connect(audioContext.destination)
+      
+      // Store references for cleanup
+      mediaRecorderRef.current = { 
+        stop: () => {
+          processor.disconnect()
+          source.disconnect()
+          audioContext.close()
+        },
+        state: 'recording'
+      } as MediaRecorder
+      
+      setMessages(prev => [...prev, '🎤 Started PCM audio streaming...'])
     } catch (error) {
       console.error('Failed to start audio streaming:', error)
       setMessages(prev => [...prev, 'Failed to start audio recording'])

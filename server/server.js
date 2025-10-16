@@ -253,7 +253,10 @@ wss.on('connection', (ws, req) => {
           
           if (connection.deepgramWs.readyState === connection.deepgramWs.OPEN && connection.deepgramReady) {
             try {
-              connection.deepgramWs.send(data.audio);
+              // Convert base64 audio data to binary buffer for Deepgram
+              const audioBuffer = Buffer.from(data.audio, 'base64');
+              console.log(`[${getShortTimestamp()}] 🎵 Sending binary audio to Deepgram: ${audioBuffer.length} bytes`);
+              connection.deepgramWs.send(audioBuffer);
             } catch (audioError) {
               console.error(`[${getShortTimestamp()}] ❌ Error sending audio to Deepgram:`, audioError);
               ws.send(JSON.stringify({

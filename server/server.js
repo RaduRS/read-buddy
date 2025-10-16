@@ -156,15 +156,16 @@ wss.on('connection', (ws, req) => {
             console.log(`[${getShortTimestamp()}] 🔗 Deepgram WebSocket created for session: ${sessionId}`);
             
             // Store connection with frontend WebSocket reference
+            // Note: deepgramReady is set to true because SettingsApplied was already received during initialization
             activeConnections.set(sessionId, {
               deepgramWs,
               sessionConfig,
               frontendWs: ws,
               startTime: new Date(),
-              deepgramReady: false  // Track if Deepgram is ready to receive audio
+              deepgramReady: true  // Set to true since SettingsApplied was received during initializeVoiceAgent
             });
             
-            console.log(`[${getShortTimestamp()}] 💾 Session ${sessionId} stored in activeConnections`);
+            console.log(`[${getShortTimestamp()}] 💾 Session ${sessionId} stored in activeConnections with deepgramReady: true`);
             
             // Set up message forwarding from Deepgram to frontend
             deepgramWs.on('message', (deepgramMessage) => {
@@ -210,47 +211,8 @@ wss.on('connection', (ws, req) => {
                     return;
                   }
                   
-                  // Check for SettingsApplied to mark Deepgram as ready
-                  if (parsedData.type === 'SettingsApplied') {
-                    console.log(`[${getShortTimestamp()}] 🔍 Debug: SettingsApplied received, active sessions: [${Array.from(activeConnections.keys()).join(', ')}]`);
-                    console.log(`[${getShortTimestamp()}] 🔍 Closure sessionId: ${sessionId}`);
-                    
-                    // First try to use the closure sessionId (should be the correct one)
-                    let targetSessionId = sessionId;
-                    let targetConnection = activeConnections.get(sessionId);
-                    
-                    // If closure sessionId doesn't work, fall back to WebSocket lookup
-                    if (!targetConnection || targetConnection.deepgramWs !== deepgramWs) {
-                      console.log(`[${getShortTimestamp()}] ⚠️ Closure sessionId mismatch, falling back to WebSocket lookup`);
-                      
-                      for (const [sid, conn] of activeConnections.entries()) {
-                        console.log(`[${getShortTimestamp()}] 🔍 Checking session ${sid}: deepgramWs match = ${conn.deepgramWs === deepgramWs}`);
-                        if (conn.deepgramWs === deepgramWs) {
-                          targetSessionId = sid;
-                          targetConnection = conn;
-                          break;
-                        }
-                      }
-                    }
-                    
-                    if (targetConnection && targetSessionId) {
-                      console.log(`[${getShortTimestamp()}] 🎉 SettingsApplied received - marking Deepgram as ready for session ${targetSessionId}!`);
-                      targetConnection.deepgramReady = true;
-                      console.log(`[${getShortTimestamp()}] 🔍 Debug: deepgramReady flag set to ${targetConnection.deepgramReady}, WebSocket state: ${targetConnection.deepgramWs.readyState}`);
-                      
-                      // Also log all sessions and their deepgramReady status
-                      console.log(`[${getShortTimestamp()}] 🔍 All sessions deepgramReady status:`);
-                      for (const [sid, conn] of activeConnections.entries()) {
-                        console.log(`[${getShortTimestamp()}] 🔍   Session ${sid}: deepgramReady = ${conn.deepgramReady}`);
-                      }
-                    } else {
-                      console.log(`[${getShortTimestamp()}] ❌ SettingsApplied received but no connection found for this Deepgram WebSocket`);
-                      console.log(`[${getShortTimestamp()}] 🔍 Available connections and their WebSocket objects:`);
-                      for (const [sid, conn] of activeConnections.entries()) {
-                        console.log(`[${getShortTimestamp()}] 🔍   Session ${sid}: has deepgramWs = ${!!conn.deepgramWs}`);
-                      }
-                    }
-                  }
+                  // Note: SettingsApplied is handled during initialization in voice-agent.js
+                  // and deepgramReady is set to true when the session is stored
                   
                   // Forward JSON messages
                   ws.send(JSON.stringify({

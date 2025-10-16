@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { audioManager } from '@/lib/audio-manager'
 
 export default function Home() {
   const [isConnecting, setIsConnecting] = useState(false)
@@ -12,8 +13,6 @@ export default function Home() {
   const sessionIdRef = useRef<string | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
-
-
 
   const connectToVoiceAgent = async () => {
     setIsConnecting(true)
@@ -109,9 +108,13 @@ export default function Home() {
             break
             
           case 'deepgram_audio':
-            // Handle binary audio data from Deepgram
-            console.log('Received Deepgram audio data:', data.data ? 'Yes' : 'No')
-            // TODO: Implement audio playback if needed
+            // Handle binary audio data from Deepgram using AudioManager
+            if (data.data) {
+              audioManager.playAudio(data.data).catch((error) => {
+                console.error('Failed to play Deepgram audio:', error)
+                setMessages(prev => [...prev, '⚠️ Audio playback failed'])
+              })
+            }
             break
             
           case 'session_error':
@@ -329,6 +332,8 @@ export default function Home() {
       if (wsRef.current) {
         wsRef.current.close()
       }
+      // Clean up audio resources
+      audioManager.dispose()
     }
   }, [])
 

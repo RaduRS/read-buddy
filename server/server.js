@@ -151,7 +151,9 @@ wss.on('connection', (ws, req) => {
             const sessionConfig = { ...getDefaultSessionConfig(), ...data.config };
             const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             
+            console.log(`[${getShortTimestamp()}] 🆕 Creating new session: ${sessionId}`);
             const deepgramWs = await initializeVoiceAgent(sessionConfig);
+            console.log(`[${getShortTimestamp()}] 🔗 Deepgram WebSocket created for session: ${sessionId}`);
             
             // Store connection with frontend WebSocket reference
             activeConnections.set(sessionId, {
@@ -161,6 +163,8 @@ wss.on('connection', (ws, req) => {
               startTime: new Date(),
               deepgramReady: false  // Track if Deepgram is ready to receive audio
             });
+            
+            console.log(`[${getShortTimestamp()}] 💾 Session ${sessionId} stored in activeConnections`);
             
             // Set up message forwarding from Deepgram to frontend
             deepgramWs.on('message', (deepgramMessage) => {
@@ -209,25 +213,42 @@ wss.on('connection', (ws, req) => {
                   // Check for SettingsApplied to mark Deepgram as ready
                   if (parsedData.type === 'SettingsApplied') {
                     console.log(`[${getShortTimestamp()}] 🔍 Debug: SettingsApplied received, active sessions: [${Array.from(activeConnections.keys()).join(', ')}]`);
+                    console.log(`[${getShortTimestamp()}] 🔍 Closure sessionId: ${sessionId}`);
                     
-                    // Find the sessionId by looking for the connection with this Deepgram WebSocket
-                    let foundSessionId = null;
-                    let foundConnection = null;
+                    // First try to use the closure sessionId (should be the correct one)
+                    let targetSessionId = sessionId;
+                    let targetConnection = activeConnections.get(sessionId);
                     
-                    for (const [sid, conn] of activeConnections.entries()) {
-                      if (conn.deepgramWs === deepgramWs) {
-                        foundSessionId = sid;
-                        foundConnection = conn;
-                        break;
+                    // If closure sessionId doesn't work, fall back to WebSocket lookup
+                    if (!targetConnection || targetConnection.deepgramWs !== deepgramWs) {
+                      console.log(`[${getShortTimestamp()}] ⚠️ Closure sessionId mismatch, falling back to WebSocket lookup`);
+                      
+                      for (const [sid, conn] of activeConnections.entries()) {
+                        console.log(`[${getShortTimestamp()}] 🔍 Checking session ${sid}: deepgramWs match = ${conn.deepgramWs === deepgramWs}`);
+                        if (conn.deepgramWs === deepgramWs) {
+                          targetSessionId = sid;
+                          targetConnection = conn;
+                          break;
+                        }
                       }
                     }
                     
-                    if (foundConnection && foundSessionId) {
-                      console.log(`[${getShortTimestamp()}] 🎉 SettingsApplied received - marking Deepgram as ready for session ${foundSessionId}!`);
-                      foundConnection.deepgramReady = true;
-                      console.log(`[${getShortTimestamp()}] 🔍 Debug: deepgramReady flag set to ${foundConnection.deepgramReady}, WebSocket state: ${foundConnection.deepgramWs.readyState}`);
+                    if (targetConnection && targetSessionId) {
+                      console.log(`[${getShortTimestamp()}] 🎉 SettingsApplied received - marking Deepgram as ready for session ${targetSessionId}!`);
+                      targetConnection.deepgramReady = true;
+                      console.log(`[${getShortTimestamp()}] 🔍 Debug: deepgramReady flag set to ${targetConnection.deepgramReady}, WebSocket state: ${targetConnection.deepgramWs.readyState}`);
+                      
+                      // Also log all sessions and their deepgramReady status
+                      console.log(`[${getShortTimestamp()}] 🔍 All sessions deepgramReady status:`);
+                      for (const [sid, conn] of activeConnections.entries()) {
+                        console.log(`[${getShortTimestamp()}] 🔍   Session ${sid}: deepgramReady = ${conn.deepgramReady}`);
+                      }
                     } else {
                       console.log(`[${getShortTimestamp()}] ❌ SettingsApplied received but no connection found for this Deepgram WebSocket`);
+                      console.log(`[${getShortTimestamp()}] 🔍 Available connections and their WebSocket objects:`);
+                      for (const [sid, conn] of activeConnections.entries()) {
+                        console.log(`[${getShortTimestamp()}] 🔍   Session ${sid}: has deepgramWs = ${!!conn.deepgramWs}`);
+                      }
                     }
                   }
                   

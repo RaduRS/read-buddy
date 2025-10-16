@@ -306,13 +306,22 @@ export default function Home() {
       
       const source = audioContext.createMediaStreamSource(stream)
       
-      // Create ScriptProcessorNode for raw audio processing
-      const processor = audioContext.createScriptProcessor(4096, 1, 1)
+      // Create ScriptProcessorNode for raw audio processing with larger buffer for less frequent transmission
+      const processor = audioContext.createScriptProcessor(8192, 1, 1) // Doubled buffer size for ~340ms chunks
       
       processor.onaudioprocess = (event) => {
         if (ws.readyState === WebSocket.OPEN && sessionIdRef.current) {
           const inputBuffer = event.inputBuffer
           const inputData = inputBuffer.getChannelData(0) // Get mono channel
+          
+          // Check for silence to avoid sending empty audio (reduces AI processing load)
+          const rms = Math.sqrt(inputData.reduce((sum, sample) => sum + sample * sample, 0) / inputData.length)
+          const silenceThreshold = 0.01 // Adjust as needed
+          
+          if (rms < silenceThreshold) {
+            console.log('🔇 Skipping silent audio chunk (RMS:', rms.toFixed(4), ')')
+            return // Don't send silent audio
+          }
           
           // Convert Float32 to Int16 PCM
           const pcmData = new Int16Array(inputData.length)
@@ -326,7 +335,7 @@ export default function Home() {
           const uint8Array = new Uint8Array(pcmData.buffer)
           const base64Audio = btoa(String.fromCharCode(...uint8Array))
           
-          console.log('📤 Sending PCM audio data:', pcmData.length, 'samples, base64 length:', base64Audio.length)
+          console.log('📤 Sending PCM audio data:', pcmData.length, 'samples, RMS:', rms.toFixed(4), 'base64 length:', base64Audio.length)
           
           ws.send(JSON.stringify({
             type: 'send_audio',

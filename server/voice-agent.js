@@ -65,6 +65,10 @@ export async function initializeVoiceAgent(sessionConfig = {}) {
                   type: "deepgram",
                   model: "nova-3",
                 },
+                // Optimize for faster response
+                smart_format: false,
+                interim_results: true,
+                endpointing: 300, // Shorter endpointing for faster response (300ms)
               },
               think: {
                 provider: {
@@ -73,6 +77,9 @@ export async function initializeVoiceAgent(sessionConfig = {}) {
                 },
                 prompt: systemPrompt,
                 functions: functionsArray || [],
+                // Optimize for faster thinking
+                max_tokens: 150, // Limit response length for faster generation
+                temperature: 0.7, // Slightly lower temperature for more focused responses
               },
               speak: {
                 provider: {
@@ -80,7 +87,7 @@ export async function initializeVoiceAgent(sessionConfig = {}) {
                   model: "aura-asteria-en",
                 },
               },
-              greeting: "Hi there! I'm Read Buddy, your AI reading companion. What would you like to read today?",
+              // Remove greeting to avoid initial processing delay
             },
           };
 

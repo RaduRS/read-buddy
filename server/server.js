@@ -195,6 +195,15 @@ wss.on('connection', (ws, req) => {
                     return;
                   }
                   
+                  // Check for SettingsApplied to mark Deepgram as ready
+                  if (parsedData.type === 'SettingsApplied') {
+                    const connection = activeConnections.get(sessionId);
+                    if (connection) {
+                      console.log(`[${getShortTimestamp()}] 🎉 SettingsApplied received - marking Deepgram as ready for session ${sessionId}!`);
+                      connection.deepgramReady = true;
+                    }
+                  }
+                  
                   // Forward JSON messages
                   ws.send(JSON.stringify({
                     type: 'deepgram_message',

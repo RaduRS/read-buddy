@@ -296,7 +296,7 @@ export default function Home() {
     }
   }
 
-  const startAudioStreaming = (stream: MediaStream, ws: WebSocket) => {
+  const startAudioStreaming = async (stream: MediaStream, ws: WebSocket) => {
     try {
       // Create AudioContext for raw PCM capture
       const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext
@@ -306,60 +306,113 @@ export default function Home() {
       
       const source = audioContext.createMediaStreamSource(stream)
       
-      // Create ScriptProcessorNode for raw audio processing with larger buffer for less frequent transmission
-      const processor = audioContext.createScriptProcessor(8192, 1, 1) // Doubled buffer size for ~340ms chunks
-      
-      processor.onaudioprocess = (event) => {
-        if (ws.readyState === WebSocket.OPEN && sessionIdRef.current) {
-          const inputBuffer = event.inputBuffer
-          const inputData = inputBuffer.getChannelData(0) // Get mono channel
-          
-          // Check for silence to avoid sending empty audio (reduces AI processing load)
-          const rms = Math.sqrt(inputData.reduce((sum, sample) => sum + sample * sample, 0) / inputData.length)
-          const silenceThreshold = 0.01 // Adjust as needed
-          
-          if (rms < silenceThreshold) {
-            console.log('🔇 Skipping silent audio chunk (RMS:', rms.toFixed(4), ')')
-            return // Don't send silent audio
+      // Use AudioWorkletNode instead of deprecated ScriptProcessorNode
+      try {
+        // Load the audio worklet processor
+        await audioContext.audioWorklet.addModule('/audio-processor.js')
+        
+        // Create AudioWorkletNode
+        const processor = new AudioWorkletNode(audioContext, 'audio-processor')
+        
+        // Handle processed audio data
+        processor.port.onmessage = (event) => {
+          if (ws.readyState === WebSocket.OPEN && sessionIdRef.current) {
+            const { audioData, rms } = event.data
+            
+            // Check for silence to avoid sending empty audio (reduces AI processing load)
+            const silenceThreshold = 0.01
+            
+            if (rms < silenceThreshold) {
+              console.log('🔇 Skipping silent audio chunk (RMS:', rms.toFixed(4), ')')
+              return // Don't send silent audio
+            }
+            
+            // Convert to base64
+            const base64Audio = btoa(String.fromCharCode(...audioData))
+            
+            console.log('📤 Sending PCM audio data:', audioData.length, 'bytes, RMS:', rms.toFixed(4), 'base64 length:', base64Audio.length)
+            
+            ws.send(JSON.stringify({
+              type: 'send_audio',
+              sessionId: sessionIdRef.current,
+              audio: base64Audio
+            }))
           }
-          
-          // Convert Float32 to Int16 PCM
-          const pcmData = new Int16Array(inputData.length)
-          for (let i = 0; i < inputData.length; i++) {
-            // Clamp and convert to 16-bit signed integer
-            const sample = Math.max(-1, Math.min(1, inputData[i]))
-            pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF
-          }
-          
-          // Convert to base64
-          const uint8Array = new Uint8Array(pcmData.buffer)
-          const base64Audio = btoa(String.fromCharCode(...uint8Array))
-          
-          console.log('📤 Sending PCM audio data:', pcmData.length, 'samples, RMS:', rms.toFixed(4), 'base64 length:', base64Audio.length)
-          
-          ws.send(JSON.stringify({
-            type: 'send_audio',
-            sessionId: sessionIdRef.current,
-            audio: base64Audio
-          }))
         }
+        
+        source.connect(processor)
+        processor.connect(audioContext.destination)
+        
+        // Store references for cleanup
+        mediaRecorderRef.current = { 
+          stop: () => {
+            processor.disconnect()
+            source.disconnect()
+            audioContext.close()
+          },
+          state: 'recording'
+        } as MediaRecorder
+        
+        console.log('🎤 Started PCM audio streaming with AudioWorkletNode...')
+        
+      } catch (workletError) {
+        console.warn('AudioWorklet not available, falling back to ScriptProcessorNode:', workletError)
+        
+        // Fallback to ScriptProcessorNode for compatibility
+        const processor = audioContext.createScriptProcessor(8192, 1, 1)
+        
+        processor.onaudioprocess = (event) => {
+          if (ws.readyState === WebSocket.OPEN && sessionIdRef.current) {
+            const inputBuffer = event.inputBuffer
+            const inputData = inputBuffer.getChannelData(0) // Get mono channel
+            
+            // Check for silence to avoid sending empty audio (reduces AI processing load)
+            const rms = Math.sqrt(inputData.reduce((sum, sample) => sum + sample * sample, 0) / inputData.length)
+            const silenceThreshold = 0.01 // Adjust as needed
+            
+            if (rms < silenceThreshold) {
+              console.log('🔇 Skipping silent audio chunk (RMS:', rms.toFixed(4), ')')
+              return // Don't send silent audio
+            }
+            
+            // Convert Float32 to Int16 PCM
+            const pcmData = new Int16Array(inputData.length)
+            for (let i = 0; i < inputData.length; i++) {
+              // Clamp and convert to 16-bit signed integer
+              const sample = Math.max(-1, Math.min(1, inputData[i]))
+              pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF
+            }
+            
+            // Convert to base64
+            const uint8Array = new Uint8Array(pcmData.buffer)
+            const base64Audio = btoa(String.fromCharCode(...uint8Array))
+            
+            console.log('📤 Sending PCM audio data:', pcmData.length, 'samples, RMS:', rms.toFixed(4), 'base64 length:', base64Audio.length)
+            
+            ws.send(JSON.stringify({
+              type: 'send_audio',
+              sessionId: sessionIdRef.current,
+              audio: base64Audio
+            }))
+          }
+        }
+        
+        source.connect(processor)
+         processor.connect(audioContext.destination)
+         
+         // Store references for cleanup
+         mediaRecorderRef.current = { 
+           stop: () => {
+             processor.disconnect()
+             source.disconnect()
+             audioContext.close()
+           },
+           state: 'recording'
+         } as MediaRecorder
+         
+         console.log('🎤 Started PCM audio streaming with ScriptProcessorNode (fallback)...')
       }
       
-      // Connect the audio processing chain
-      source.connect(processor)
-      processor.connect(audioContext.destination)
-      
-      // Store references for cleanup
-      mediaRecorderRef.current = { 
-        stop: () => {
-          processor.disconnect()
-          source.disconnect()
-          audioContext.close()
-        },
-        state: 'recording'
-      } as MediaRecorder
-      
-      setMessages(prev => [...prev, '🎤 Started PCM audio streaming...'])
     } catch (error) {
       console.error('Failed to start audio streaming:', error)
       setMessages(prev => [...prev, 'Failed to start audio recording'])

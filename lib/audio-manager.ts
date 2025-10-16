@@ -121,69 +121,47 @@ class AudioManager {
     }
 
     try {
-      // Add incoming data to buffer
-      this.appendToBuffer(base64Data)
-      
-      // Process complete frames from buffer
-      this.processAudioFrames()
+      const pcmData = this.base64ToPCMFloat32Array(base64Data)
+      await this.playPCMChunk(pcmData)
     } catch (error) {
       console.error('AudioManager: Failed to play audio:', error)
       throw error
     }
   }
 
-  private appendToBuffer(base64Data: string): void {
-    // Convert base64 to ArrayBuffer
+  private base64ToPCMFloat32Array(base64Data: string): Float32Array {
+    // Decode base64 to binary string
     const binaryString = atob(base64Data)
-    const newData = new ArrayBuffer(binaryString.length)
-    const newView = new Uint8Array(newData)
     
+    // Convert to Uint8Array
+    const bytes = new Uint8Array(binaryString.length)
     for (let i = 0; i < binaryString.length; i++) {
-      newView[i] = binaryString.charCodeAt(i)
+      bytes[i] = binaryString.charCodeAt(i)
     }
-
-    // Concatenate with existing buffer
-    const combinedBuffer = new ArrayBuffer(this.audioBuffer.byteLength + newData.byteLength)
-    const combinedView = new Uint8Array(combinedBuffer)
-    
-    combinedView.set(new Uint8Array(this.audioBuffer), 0)
-    combinedView.set(new Uint8Array(newData), this.audioBuffer.byteLength)
-    
-    this.audioBuffer = combinedBuffer
-  }
-
-  private processAudioFrames(): void {
-    // Process complete frames from the buffer
-    while (this.audioBuffer.byteLength >= this.frameSize) {
-      // Extract one frame
-      const frameBuffer = this.audioBuffer.slice(0, this.frameSize)
-      
-      // Remove processed frame from buffer
-      this.audioBuffer = this.audioBuffer.slice(this.frameSize)
-      
-      // Convert frame to audio and play
-      this.playAudioFrame(frameBuffer)
-    }
-  }
-
-  private playAudioFrame(frameBuffer: ArrayBuffer): void {
-    const frameView = new Uint8Array(frameBuffer)
     
     // Apply fade-in for first chunk to prevent audio pops
     if (this.isFirstChunk) {
-      this.applyFadeInToFrame(frameView)
+      this.applyFadeIn(bytes)
       this.isFirstChunk = false
     }
     
-    // Convert to PCM Float32Array
-    const pcmData = this.bufferToPCMFloat32Array(frameView)
+    // Convert to Int16Array (assuming 16-bit PCM)
+    const int16Array = new Int16Array(bytes.buffer)
     
-    // Play the frame
-    this.playPCMChunk(pcmData)
+    // Convert Int16 to Float32 (normalize to [-1, 1])
+    const float32Array = new Float32Array(int16Array.length)
+    for (let i = 0; i < int16Array.length; i++) {
+      float32Array[i] = Math.max(-1, Math.min(1, int16Array[i] / 32768.0)) // Clamp to prevent distortion
+    }
+    
+    // Apply simple smoothing to reduce clicks and pops
+    this.applySmoothingFilter(float32Array)
+    
+    return float32Array
   }
 
-  private applyFadeInToFrame(audioBytes: Uint8Array): void {
-    // Apply fade-in over first 240 samples (30ms) like the professional implementation
+  private applyFadeIn(audioBytes: Uint8Array): void {
+    // Apply fade-in over first 240 samples (30ms) to prevent audio pops
     const fadeLength = Math.min(240, audioBytes.length / 2) // Divide by 2 for 16-bit samples
     
     for (let i = 0; i < fadeLength * 2; i += 2) { // Step by 2 for 16-bit samples
@@ -199,22 +177,6 @@ class AudioManager {
       audioBytes[i] = fadedSample & 0xFF
       audioBytes[i + 1] = (fadedSample >> 8) & 0xFF
     }
-  }
-
-  private bufferToPCMFloat32Array(bytes: Uint8Array): Float32Array {
-    // Convert to Int16Array (assuming 16-bit PCM)
-    const int16Array = new Int16Array(bytes.buffer)
-    
-    // Convert Int16 to Float32 (normalize to [-1, 1])
-    const float32Array = new Float32Array(int16Array.length)
-    for (let i = 0; i < int16Array.length; i++) {
-      float32Array[i] = Math.max(-1, Math.min(1, int16Array[i] / 32768.0)) // Clamp to prevent distortion
-    }
-    
-    // Apply simple smoothing to reduce clicks and pops
-    this.applySmoothingFilter(float32Array)
-    
-    return float32Array
   }
 
   getIsPlaying(): boolean {

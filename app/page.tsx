@@ -16,6 +16,7 @@ export default function Home() {
   const sessionIdRef = useRef<string | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
+  const audioTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const connectToVoiceAgent = async () => {
     setIsConnecting(true)
@@ -117,6 +118,25 @@ export default function Home() {
           case 'deepgram_audio':
             // Handle binary audio data from Deepgram using AudioManager
             if (data.data) {
+              // Set AI speaking state and start timeout
+              setIsAISpeaking(true)
+              setConversationState('ai_speaking')
+              setCanUserSpeak(false)
+              
+              // Clear any existing timeout
+              if (audioTimeoutRef.current) {
+                clearTimeout(audioTimeoutRef.current)
+              }
+              
+              // Set timeout to automatically switch back to user turn if AgentAudioDone isn't received
+              audioTimeoutRef.current = setTimeout(() => {
+                console.log('⏰ Audio timeout - switching to user turn')
+                setIsAISpeaking(false)
+                setConversationState('idle')
+                setCanUserSpeak(true)
+                setMessages(prev => [...prev, '✅ Your turn to speak! (timeout)'])
+              }, 3000) // 3 second timeout
+              
               audioManager.playAudio(data.data).catch((error) => {
                 console.error('Failed to play Deepgram audio:', error)
                 setMessages(prev => [...prev, '⚠️ Audio playback failed'])
@@ -210,6 +230,7 @@ export default function Home() {
   }
 
   const handleDeepgramMessage = (data: { type: string; role?: string; content?: string; [key: string]: unknown }) => {
+    console.log('📨 Received message:', data.type, data)
     switch (data.type) {
       case 'ConversationText':
         if (data.role === 'user') {
@@ -240,6 +261,14 @@ export default function Home() {
 
       case 'AgentAudioDone':
         // AI finished speaking, user can now speak
+        console.log('🎯 AgentAudioDone received - switching to user turn')
+        
+        // Clear the audio timeout since we received the proper signal
+        if (audioTimeoutRef.current) {
+          clearTimeout(audioTimeoutRef.current)
+          audioTimeoutRef.current = null
+        }
+        
         setIsAISpeaking(false)
         setConversationState('idle')
         setCanUserSpeak(true)
@@ -305,6 +334,13 @@ export default function Home() {
       wsRef.current.close()
       wsRef.current = null
     }
+    
+    // Clean up audio timeout
+    if (audioTimeoutRef.current) {
+      clearTimeout(audioTimeoutRef.current)
+      audioTimeoutRef.current = null
+    }
+    
     stopAudioStreaming()
     setIsConnected(false)
     setIsListening(false)

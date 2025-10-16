@@ -6,101 +6,136 @@
 // Extend Window interface to include webkitAudioContext
 declare global {
   interface Window {
-    webkitAudioContext?: typeof AudioContext
+    webkitAudioContext: typeof AudioContext;
   }
 }
 
-export class AudioManager {
-  private audioContext: AudioContext | null = null
-  private audioQueue: ArrayBuffer[] = []
-  private isPlaying = false
+class AudioManager {
+  private audioContext: AudioContext | null = null;
+  private isPlaying = false;
+  private nextStartTime = 0;
+  private audioQueue: Float32Array[] = [];
+  private readonly sampleRate = 16000; // Deepgram typically uses 16kHz
+  private readonly channels = 1; // Mono audio
+  private readonly bufferDuration = 0.1; // 100ms buffers for smooth playback
 
-  /**
-   * Initialize audio context (lazy initialization)
-   */
-  private initAudioContext(): AudioContext {
+  async initAudioContext(): Promise<void> {
     if (!this.audioContext) {
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext || AudioContext)()
+      // Try different AudioContext constructors for cross-browser compatibility
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext || AudioContext;
+      this.audioContext = new AudioContextClass();
+      this.nextStartTime = this.audioContext.currentTime;
     }
-    return this.audioContext
-  }
 
-  /**
-   * Resume audio context if suspended (required for user interaction)
-   */
-  private async ensureAudioContextResumed(): Promise<void> {
-    const audioContext = this.initAudioContext()
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume()
+    // Resume audio context if it's suspended
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
     }
   }
 
-  /**
-   * Convert base64 audio data to ArrayBuffer
-   */
-  private base64ToArrayBuffer(base64: string): ArrayBuffer {
-    const binaryString = atob(base64)
-    const bytes = new Uint8Array(binaryString.length)
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i)
+  private base64ToPCMFloat32Array(base64: string): Float32Array {
+    // Decode base64 to binary string
+    const binaryString = atob(base64);
+    
+    // Convert to Int16Array (assuming 16-bit PCM)
+    const int16Array = new Int16Array(binaryString.length / 2);
+    for (let i = 0; i < int16Array.length; i++) {
+      const byte1 = binaryString.charCodeAt(i * 2);
+      const byte2 = binaryString.charCodeAt(i * 2 + 1);
+      // Little-endian 16-bit signed integer
+      int16Array[i] = (byte2 << 8) | byte1;
     }
-    return bytes.buffer
+    
+    // Convert Int16 to Float32 (normalize to [-1, 1])
+    const float32Array = new Float32Array(int16Array.length);
+    for (let i = 0; i < int16Array.length; i++) {
+      float32Array[i] = int16Array[i] / 32768.0; // 32768 = 2^15
+    }
+    
+    return float32Array;
   }
 
-  /**
-   * Play audio from base64 encoded data
-   */
-  async playAudio(base64AudioData: string): Promise<void> {
-    try {
-      await this.ensureAudioContextResumed()
-      const audioContext = this.initAudioContext()
-      
-      // Convert base64 to ArrayBuffer
-      const arrayBuffer = this.base64ToArrayBuffer(base64AudioData)
-      
-      // Decode audio data
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice())
-      
-      // Create and play audio source
-      const source = audioContext.createBufferSource()
-      source.buffer = audioBuffer
-      source.connect(audioContext.destination)
-      
-      // Track playing state
-      this.isPlaying = true
-      source.onended = () => {
-        this.isPlaying = false
+  private async playPCMChunk(pcmData: Float32Array): Promise<void> {
+    if (!this.audioContext) {
+      throw new Error('AudioContext not initialized');
+    }
+
+    // Create an AudioBuffer for this chunk
+    const audioBuffer = this.audioContext.createBuffer(
+      this.channels,
+      pcmData.length,
+      this.sampleRate
+    );
+
+    // Copy PCM data to the buffer
+     const channelData = audioBuffer.getChannelData(0);
+     channelData.set(pcmData);
+
+    // Create a source node
+    const source = this.audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(this.audioContext.destination);
+
+    // Schedule playback to ensure seamless audio
+    const currentTime = this.audioContext.currentTime;
+    const startTime = Math.max(currentTime, this.nextStartTime);
+    
+    source.start(startTime);
+    
+    // Update next start time for seamless playback
+    this.nextStartTime = startTime + audioBuffer.duration;
+    
+    this.isPlaying = true;
+    source.onended = () => {
+      // Only set to false if this was the last scheduled audio
+      if (this.nextStartTime <= this.audioContext!.currentTime + 0.1) {
+        this.isPlaying = false;
       }
+    };
+  }
+
+  async playAudio(base64Data: string): Promise<void> {
+    try {
+      await this.initAudioContext();
       
-      source.start()
-      console.log('Audio playback started')
+      if (!this.audioContext) {
+        throw new Error('Failed to initialize AudioContext');
+      }
+
+      // Convert base64 to PCM data
+      const pcmData = this.base64ToPCMFloat32Array(base64Data);
+      
+      // Play the PCM chunk
+      await this.playPCMChunk(pcmData);
       
     } catch (error) {
-      console.error('AudioManager: Failed to play audio:', error)
-      this.isPlaying = false
-      throw error
+      console.error('AudioManager: Failed to play audio:', error);
+      throw error;
     }
   }
 
-  /**
-   * Check if audio is currently playing
-   */
   getIsPlaying(): boolean {
-    return this.isPlaying
+    return this.isPlaying;
   }
 
-  /**
-   * Clean up audio resources
-   */
+  // Reset audio timing (useful when starting a new conversation)
+  reset(): void {
+    if (this.audioContext) {
+      this.nextStartTime = this.audioContext.currentTime;
+    }
+    this.isPlaying = false;
+    this.audioQueue = [];
+  }
+
   dispose(): void {
     if (this.audioContext) {
-      this.audioContext.close()
-      this.audioContext = null
+      this.audioContext.close();
+      this.audioContext = null;
     }
-    this.audioQueue = []
-    this.isPlaying = false
+    this.isPlaying = false;
+    this.audioQueue = [];
   }
 }
 
-// Singleton instance for the application
-export const audioManager = new AudioManager()
+// Export a singleton instance
+export const audioManager = new AudioManager();

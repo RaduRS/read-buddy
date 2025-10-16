@@ -193,12 +193,12 @@ export async function initializeDeepgram(businessConfig, callContext) {
             type: "Settings",
             audio: {
               input: {
-                encoding: "mulaw",
-                sample_rate: 8000,
+                encoding: "linear16",
+                sample_rate: 24000,
               },
               output: {
-                encoding: "mulaw",
-                sample_rate: 8000,
+                encoding: "linear16",
+                sample_rate: 24000,
                 container: "none",
               },
             },

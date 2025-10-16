@@ -50,11 +50,11 @@ export async function initializeVoiceAgent(sessionConfig = {}) {
             audio: {
               input: {
                 encoding: "linear16",
-                sample_rate: 16000,
+                sample_rate: 24000,
               },
               output: {
                 encoding: "linear16",
-                sample_rate: 16000,
+                sample_rate: 24000,
                 container: "none",
               },
             },

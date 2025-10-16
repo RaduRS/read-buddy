@@ -15,7 +15,7 @@ class AudioManager {
   private gainNode: GainNode | null = null;
   private nextStartTime = 0;
   private audioQueue: AudioBufferSourceNode[] = [];
-  private readonly sampleRate = 16000; // Deepgram uses 16kHz
+  private readonly sampleRate = 24000; // Deepgram uses 24kHz for optimal quality
   private readonly channels = 1; // Mono
   private readonly bufferDuration = 0.02; // 20ms chunks
   private readonly crossfadeDuration = 0.005; // 5ms crossfade
@@ -129,6 +129,40 @@ class AudioManager {
     }
   }
 
+  private createWAVHeader(dataLength: number): Uint8Array {
+    // Create WAV header for linear16 audio at 24kHz as per Deepgram docs
+    const header = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, // "RIFF"
+      0x00, 0x00, 0x00, 0x00, // Placeholder for file size
+      0x57, 0x41, 0x56, 0x45, // "WAVE"
+      0x66, 0x6D, 0x74, 0x20, // "fmt "
+      0x10, 0x00, 0x00, 0x00, // Chunk size (16)
+      0x01, 0x00,             // Audio format (1 for PCM)
+      0x01, 0x00,             // Number of channels (1)
+      0xC0, 0x5D, 0x00, 0x00, // Sample rate (24000)
+      0x80, 0xBB, 0x02, 0x00, // Byte rate (24000 * 2)
+      0x02, 0x00,             // Block align (2)
+      0x10, 0x00,             // Bits per sample (16)
+      0x64, 0x61, 0x74, 0x61, // "data"
+      0x00, 0x00, 0x00, 0x00  // Placeholder for data size
+    ]);
+
+    // Set file size (header + data - 8 bytes)
+    const fileSize = header.length + dataLength - 8;
+    header[4] = fileSize & 0xFF;
+    header[5] = (fileSize >> 8) & 0xFF;
+    header[6] = (fileSize >> 16) & 0xFF;
+    header[7] = (fileSize >> 24) & 0xFF;
+
+    // Set data size
+    header[40] = dataLength & 0xFF;
+    header[41] = (dataLength >> 8) & 0xFF;
+    header[42] = (dataLength >> 16) & 0xFF;
+    header[43] = (dataLength >> 24) & 0xFF;
+
+    return header;
+  }
+
   private base64ToPCMFloat32Array(base64Data: string): Float32Array {
     // Decode base64 to binary string
     const binaryString = atob(base64Data)
@@ -139,13 +173,19 @@ class AudioManager {
       bytes[i] = binaryString.charCodeAt(i)
     }
     
+    // Create WAV header for proper browser playback
+    const wavHeader = this.createWAVHeader(bytes.length);
+    const wavData = new Uint8Array(wavHeader.length + bytes.length);
+    wavData.set(wavHeader, 0);
+    wavData.set(bytes, wavHeader.length);
+    
     // Apply fade-in for first chunk to prevent audio pops
     if (this.isFirstChunk) {
       this.applyFadeIn(bytes)
       this.isFirstChunk = false
     }
     
-    // Convert to Int16Array (assuming 16-bit PCM)
+    // Convert to Int16Array (assuming 16-bit PCM) - skip WAV header
     const int16Array = new Int16Array(bytes.buffer)
     
     // Convert Int16 to Float32 (normalize to [-1, 1])

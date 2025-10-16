@@ -42,7 +42,13 @@ export default function Home() {
       setMessages(prev => [...prev, 'Requesting microphone access...'])
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: true
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 24000,
+          channelCount: 1
+        }
       })
       audioStreamRef.current = stream
       setMessages(prev => [...prev, '✅ Microphone access granted!'])
@@ -280,6 +286,11 @@ export default function Home() {
         console.log('Received TTS audio')
         break
         
+      case 'SettingsApplied':
+        console.log('✅ SettingsApplied received - Deepgram configuration confirmed')
+        setMessages(prev => [...prev, '✅ Audio settings configured'])
+        break
+        
       default:
         console.log('Unhandled Deepgram message:', data.type, data)
     }
@@ -294,10 +305,12 @@ export default function Home() {
       
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0 && ws.readyState === WebSocket.OPEN && sessionIdRef.current) {
+          console.log('📤 Sending audio data:', event.data.size, 'bytes, type:', event.data.type)
           // Convert blob to base64 and send to server
           const reader = new FileReader()
           reader.onload = () => {
             const base64Audio = (reader.result as string).split(',')[1]
+            console.log('📤 Audio base64 length:', base64Audio.length)
             ws.send(JSON.stringify({
               type: 'send_audio',
               sessionId: sessionIdRef.current,
@@ -305,6 +318,8 @@ export default function Home() {
             }))
           }
           reader.readAsDataURL(event.data)
+        } else {
+          console.log('❌ Cannot send audio - size:', event.data.size, 'ws state:', ws.readyState, 'sessionId:', sessionIdRef.current)
         }
       }
       

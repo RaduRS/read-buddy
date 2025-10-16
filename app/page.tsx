@@ -8,6 +8,9 @@ export default function Home() {
   const [isConnected, setIsConnected] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState('disconnected')
   const [isListening, setIsListening] = useState(false)
+  const [isAISpeaking, setIsAISpeaking] = useState(false)
+  const [canUserSpeak, setCanUserSpeak] = useState(false)
+  const [conversationState, setConversationState] = useState<'idle' | 'user_speaking' | 'ai_thinking' | 'ai_speaking'>('idle')
   const [messages, setMessages] = useState<string[]>([])
   const wsRef = useRef<WebSocket | null>(null)
   const sessionIdRef = useRef<string | null>(null)
@@ -98,6 +101,10 @@ export default function Home() {
             setIsConnecting(false)
             setConnectionStatus('connected')
             setMessages(prev => [...prev, `Voice session started! Session ID: ${data.sessionId}`])
+            // Enable user to speak after connection is established
+            setCanUserSpeak(true)
+            setConversationState('idle')
+            setMessages(prev => [...prev, '🎤 Ready! You can start speaking now.'])
             
             // Start audio streaming
             startAudioStreaming(stream, ws)
@@ -207,19 +214,36 @@ export default function Home() {
       case 'ConversationText':
         if (data.role === 'user') {
           setMessages(prev => [...prev, `You: ${data.content}`])
+          setConversationState('ai_thinking')
+          setCanUserSpeak(false)
         } else if (data.role === 'assistant') {
           setMessages(prev => [...prev, `Read Buddy: ${data.content}`])
+          setConversationState('ai_speaking')
+          setIsAISpeaking(true)
+          setCanUserSpeak(false)
         }
         break
         
       case 'UserStartedSpeaking':
         setIsListening(true)
+        setConversationState('user_speaking')
+        setCanUserSpeak(true)
         setMessages(prev => [...prev, '🎤 Listening...'])
         break
         
       case 'UserStoppedSpeaking':
         setIsListening(false)
+        setConversationState('ai_thinking')
+        setCanUserSpeak(false)
         setMessages(prev => [...prev, '🔇 Processing...'])
+        break
+
+      case 'AgentAudioDone':
+        // AI finished speaking, user can now speak
+        setIsAISpeaking(false)
+        setConversationState('idle')
+        setCanUserSpeak(true)
+        setMessages(prev => [...prev, '✅ Your turn to speak!'])
         break
         
       case 'TtsAudio':
@@ -284,6 +308,9 @@ export default function Home() {
     stopAudioStreaming()
     setIsConnected(false)
     setIsListening(false)
+    setIsAISpeaking(false)
+    setCanUserSpeak(false)
+    setConversationState('idle')
     setConnectionStatus('disconnected')
     sessionIdRef.current = null
   }
@@ -360,6 +387,51 @@ export default function Home() {
             }`}>
               Status: {connectionStatus}
             </div>
+            
+            {isConnected && (
+              <div className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 ${
+                conversationState === 'user_speaking' 
+                  ? 'bg-blue-100 text-blue-800' 
+                  : conversationState === 'ai_thinking'
+                  ? 'bg-yellow-100 text-yellow-800'
+                  : conversationState === 'ai_speaking'
+                  ? 'bg-purple-100 text-purple-800'
+                  : canUserSpeak
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-gray-100 text-gray-800'
+              }`}>
+                {conversationState === 'user_speaking' && (
+                   <>
+                     <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+                     You&apos;re speaking
+                   </>
+                 )}
+                {conversationState === 'ai_thinking' && (
+                  <>
+                    <div className="w-2 h-2 bg-yellow-600 rounded-full animate-pulse"></div>
+                    AI is thinking...
+                  </>
+                )}
+                {conversationState === 'ai_speaking' && (
+                  <>
+                    <div className="w-2 h-2 bg-purple-600 rounded-full animate-pulse"></div>
+                    AI is speaking
+                  </>
+                )}
+                {conversationState === 'idle' && canUserSpeak && (
+                  <>
+                    <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
+                    Your turn to speak!
+                  </>
+                )}
+                {conversationState === 'idle' && !canUserSpeak && (
+                  <>
+                    <div className="w-2 h-2 bg-gray-600 rounded-full"></div>
+                    Waiting...
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex gap-4 justify-center flex-wrap">

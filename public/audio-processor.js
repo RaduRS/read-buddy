@@ -17,8 +17,22 @@ class AudioProcessor extends AudioWorkletProcessor {
     }
     
     const input = inputs[0]
-    if (input.length > 0) {
+    
+    // Debug: Check if we're getting any input at all
+    if (this.processCount <= 10) {
+      console.log(`AudioProcessor: Process call #${this.processCount}, inputs.length: ${inputs.length}, input.length: ${input ? input.length : 'undefined'}`)
+    }
+    
+    if (input && input.length > 0) {
       const inputChannel = input[0]
+      
+      // Debug: Check input channel details
+      if (this.processCount <= 10) {
+        console.log(`AudioProcessor: inputChannel.length: ${inputChannel ? inputChannel.length : 'undefined'}`)
+        if (inputChannel && inputChannel.length > 0) {
+          console.log(`AudioProcessor: First few samples: [${inputChannel.slice(0, 5).map(s => s.toFixed(6)).join(', ')}]`)
+        }
+      }
       
       for (let i = 0; i < inputChannel.length; i++) {
         this.buffer[this.bufferIndex] = inputChannel[i]
@@ -34,11 +48,11 @@ class AudioProcessor extends AudioWorkletProcessor {
           
           // Debug: log RMS levels
           if (this.audioSentCount < 5 || this.audioSentCount % 10 === 0) {
-            console.log(`AudioProcessor: RMS level: ${rms.toFixed(6)}, threshold: 0.001`)
+            console.log(`AudioProcessor: RMS level: ${rms.toFixed(6)}, threshold: DISABLED (sending all audio)`)
           }
           
-          // Only send if not silent (threshold: 0.001 - much lower for better detection)
-          if (rms > 0.001) {
+          // TEMPORARILY DISABLED: Send all audio for debugging
+          if (true) { // was: if (rms > 0.001)
             // Convert Float32 to Int16 PCM
             const pcmData = new Int16Array(this.bufferSize)
             for (let j = 0; j < this.bufferSize; j++) {

@@ -304,7 +304,16 @@ export default function Home() {
         sampleRate: 24000
       })
       
+      // Debug: Check actual sample rates
+      console.log('🔊 AudioContext sample rate:', audioContext.sampleRate)
+      console.log('🎤 Stream tracks:', stream.getAudioTracks().map(track => ({
+        label: track.label,
+        settings: track.getSettings(),
+        constraints: track.getConstraints()
+      })))
+      
       const source = audioContext.createMediaStreamSource(stream)
+      console.log('🔗 MediaStreamSource created successfully')
       
       // Use AudioWorkletNode instead of deprecated ScriptProcessorNode
       try {

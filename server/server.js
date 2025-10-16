@@ -181,10 +181,21 @@ wss.on('connection', (ws, req) => {
                   } catch (jsonError) {
                     // If it's not JSON, it might be binary audio data
                     // If we're receiving audio from Deepgram, it's ready to receive audio
-                    const connection = activeConnections.get(sessionId);
-                    if (connection && !connection.deepgramReady) {
-                      console.log(`[${getShortTimestamp()}] 🎉 Deepgram is sending audio - marking as ready for session ${sessionId}!`);
-                      connection.deepgramReady = true;
+                    // Find the sessionId by looking for the connection with this Deepgram WebSocket
+                    let foundSessionId = null;
+                    let foundConnection = null;
+                    
+                    for (const [sid, conn] of activeConnections.entries()) {
+                      if (conn.deepgramWs === deepgramWs) {
+                        foundSessionId = sid;
+                        foundConnection = conn;
+                        break;
+                      }
+                    }
+                    
+                    if (foundConnection && !foundConnection.deepgramReady && foundSessionId) {
+                      console.log(`[${getShortTimestamp()}] 🎉 Deepgram is sending audio - marking as ready for session ${foundSessionId}!`);
+                      foundConnection.deepgramReady = true;
                     }
                     
                     // Forward binary data as base64 for audio
@@ -197,13 +208,26 @@ wss.on('connection', (ws, req) => {
                   
                   // Check for SettingsApplied to mark Deepgram as ready
                   if (parsedData.type === 'SettingsApplied') {
-                    const connection = activeConnections.get(sessionId);
-                    if (connection) {
-                      console.log(`[${getShortTimestamp()}] 🎉 SettingsApplied received - marking Deepgram as ready for session ${sessionId}!`);
-                      connection.deepgramReady = true;
-                      console.log(`[${getShortTimestamp()}] 🔍 Debug: deepgramReady flag set to ${connection.deepgramReady}, WebSocket state: ${connection.deepgramWs.readyState}`);
+                    console.log(`[${getShortTimestamp()}] 🔍 Debug: SettingsApplied received, active sessions: [${Array.from(activeConnections.keys()).join(', ')}]`);
+                    
+                    // Find the sessionId by looking for the connection with this Deepgram WebSocket
+                    let foundSessionId = null;
+                    let foundConnection = null;
+                    
+                    for (const [sid, conn] of activeConnections.entries()) {
+                      if (conn.deepgramWs === deepgramWs) {
+                        foundSessionId = sid;
+                        foundConnection = conn;
+                        break;
+                      }
+                    }
+                    
+                    if (foundConnection && foundSessionId) {
+                      console.log(`[${getShortTimestamp()}] 🎉 SettingsApplied received - marking Deepgram as ready for session ${foundSessionId}!`);
+                      foundConnection.deepgramReady = true;
+                      console.log(`[${getShortTimestamp()}] 🔍 Debug: deepgramReady flag set to ${foundConnection.deepgramReady}, WebSocket state: ${foundConnection.deepgramWs.readyState}`);
                     } else {
-                      console.log(`[${getShortTimestamp()}] ❌ SettingsApplied received but no connection found for session ${sessionId}`);
+                      console.log(`[${getShortTimestamp()}] ❌ SettingsApplied received but no connection found for this Deepgram WebSocket`);
                     }
                   }
                   
